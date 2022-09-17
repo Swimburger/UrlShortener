@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>URL Shortener</title>
+</head>
+<body>
+<form>
+    <div>
+        <label for="destination">Destination URL</label>
+        <input type="text" id="destination" name="destination">
+    </div>
+    <div>
+        <label for="path">Short Path</label>
+        <input id="path" name="path">
+    </div>
+    <button type="submit">Shorten URL</button>
+</form>
+<div style="display: none">
+    Shortened URL created: <br>
+    <label for="result">Shortened URL</label>
+    <input readonly id="result">
+</div>
+<script>
+    const resultInput = document.getElementById('result');
+    const resultParent = resultInput.parentElement;
+    const form = document.getElementsByTagName('form')[0];
+    form.addEventListener('submit', async (event) => {
+        event.preventDefault();
+        const url = {
+            destination: form['destination'].value,
+            path: form['path'].value
+        };
+        fetch('/api/urls', {
+            method: 'POST', // *GET, POST, PUT, DELETE, etc.
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify(url)
+        })
+            .then(async response => {
+                const responseObject = await response.json()
+                if (!response.ok) {
+                    console.error(responseObject)
+                    return;
+                }
+                
+                resultInput.value = responseObject.shortenedUrl;
+                resultParent.style.display = 'block';
+            });
+    });
+</script>
+</body>
+</html>
