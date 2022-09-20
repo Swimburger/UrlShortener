@@ -4,6 +4,8 @@ using System.Text.RegularExpressions;
 using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
+var forwarderBaseUrl = builder.Configuration["UrlShortener:ForwarderBaseUrl"]
+    ?? throw new Exception("Missing 'UrlShortener:ForwarderBaseUrl' configuration");
 
 {
     var connectionString = builder.Configuration.GetConnectionString("UrlsDb")
@@ -19,9 +21,6 @@ var app = builder.Build();
 
 app.UseDefaultFiles()
     .UseStaticFiles();
-
-string AbsoluteUrl(HttpRequest request, string path)
-    => $"{request.Scheme}://{request.Host}{request.PathBase}{path}";
 
 var pathRegex = new Regex(
     "^[a-zA-Z0-9_]*$",
@@ -63,35 +62,15 @@ app.MapPost("/api/urls", async (
             statusCode: (int)HttpStatusCode.InternalServerError
         );
 
-
     return Results.Created(
-        uri: new Uri(AbsoluteUrl(request, $"/api/urls/{path}")),
+        uri: new Uri($"{request.Scheme}://{request.Host}{request.PathBase}/api/urls/{path}"),
         value: new
         {
             Path = path,
             Destination = destination,
-            ShortenedUrl = AbsoluteUrl(request, $"/{path}")
+            ShortenedUrl = $"{forwarderBaseUrl}/{path}"
         }
     );
-});
-
-app.MapGet("/{path}", async (
-    string path,
-    IDatabase redisDb
-) =>
-{
-    if (string.IsNullOrEmpty(path) ||
-        path.Length > 10 ||
-        pathRegex.IsMatch(path) == false)
-        return Results.BadRequest();
-
-    var redisValue = await redisDb.StringGetAsync(path);
-    if (redisValue.IsNullOrEmpty)
-        return Results.NotFound();
-
-    var destination = redisValue.ToString();
-
-    return Results.Redirect(destination);
 });
 
 app.Run();
