@@ -1,13 +1,19 @@
-using System.ComponentModel.DataAnnotations;
+using System.Net;
 using System.Text.Json.Nodes;
 using System.Text.RegularExpressions;
-using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
+using StackExchange.Redis;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddDbContext<UrlShortenerDbContext>(options =>
-    options.UseSqlite(builder.Configuration.GetConnectionString($"UrlDb")));
+{
+    var connectionString = builder.Configuration.GetConnectionString("UrlsDb")
+                ?? throw new Exception("Missing 'UrlsDb' connection string");
+    var redisDb = await ConnectionMultiplexer.ConnectAsync(connectionString);
+    builder.Services.AddSingleton<ConnectionMultiplexer>(redisDb);
+    builder.Services.AddTransient(provider =>
+        provider.GetRequiredService<ConnectionMultiplexer>().GetDatabase()
+    );
+}
 
 var app = builder.Build();
 
@@ -25,7 +31,7 @@ var pathRegex = new Regex(
 
 app.MapPost("/api/urls", async (
     HttpRequest request,
-    UrlShortenerDbContext dbContext
+    IDatabase redisDb
 ) =>
 {
     var jsonObject = await request.ReadFromJsonAsync<JsonObject>();
@@ -47,28 +53,31 @@ app.MapPost("/api/urls", async (
     if (!Uri.IsWellFormedUriString(destination, UriKind.Absolute))
         return Results.Problem("Destination has to be a valid absolute URL.");
 
-    if (dbContext.Urls.Any(u => u.Path.Equals(path)))
+    if (await redisDb.KeyExistsAsync(path))
         return Results.Problem("Path is already in use.");
 
-    var url = new Url {Path = path, Destination = destination};
-    await dbContext.Urls.AddAsync(url);
-    await dbContext.SaveChangesAsync();
+    var urlWasSet = await redisDb.StringSetAsync(path, destination);
+    if (!urlWasSet)
+        return Results.Problem(
+            "Failed to create shortened URL.",
+            statusCode: (int)HttpStatusCode.InternalServerError
+        );
+
 
     return Results.Created(
-        uri: new Uri(AbsoluteUrl(request, $"/api/urls/{url.Path}")),
+        uri: new Uri(AbsoluteUrl(request, $"/api/urls/{path}")),
         value: new
         {
-            Path = url.Path,
-            Destination = url.Destination,
-            Id = url.Id,
-            ShortenedUrl = AbsoluteUrl(request, $"/{url.Path}")
+            Path = path,
+            Destination = destination,
+            ShortenedUrl = AbsoluteUrl(request, $"/{path}")
         }
     );
 });
 
 app.MapGet("/{path}", async (
     string path,
-    UrlShortenerDbContext dbContext
+    IDatabase redisDb
 ) =>
 {
     if (string.IsNullOrEmpty(path) ||
@@ -76,29 +85,13 @@ app.MapGet("/{path}", async (
         pathRegex.IsMatch(path) == false)
         return Results.BadRequest();
 
-    var url = await dbContext.Urls.FirstOrDefaultAsync(u => u.Path == path);
-    if (url == null)
+    var redisValue = await redisDb.StringGetAsync(path);
+    if (redisValue.IsNullOrEmpty)
         return Results.NotFound();
 
-    return Results.Redirect(url.Destination);
+    var destination = redisValue.ToString();
+
+    return Results.Redirect(destination);
 });
 
 app.Run();
-
-public sealed class UrlShortenerDbContext : DbContext
-{
-    public DbSet<Url> Urls { get; set; }
-
-    public UrlShortenerDbContext(DbContextOptions<UrlShortenerDbContext> options)
-        : base(options)
-    {
-    }
-}
-
-[Index(nameof(Path), IsUnique = true)]
-public sealed record Url
-{
-    public Guid Id { get; set; }
-    public string Path { get; set; }
-    public string Destination { get; set; }
-}
