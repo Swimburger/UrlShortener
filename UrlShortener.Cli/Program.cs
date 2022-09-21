@@ -3,8 +3,9 @@ using System.Text.RegularExpressions;
 using StackExchange.Redis;
 
 #region Options
+
 var destinationOption = new Option<string>(
-    new []{"--destination-url", "-d"},
+    new[] {"--destination-url", "-d"},
     description: "The URL that the shortened URL will forward to."
 );
 destinationOption.IsRequired = true;
@@ -18,7 +19,7 @@ destinationOption.AddValidator(result =>
 });
 
 var pathOption = new Option<string>(
-    new []{"--path", "-p"},
+    new[] {"--path", "-p"},
     description: "The path used for the shortened URL."
 );
 pathOption.IsRequired = true;
@@ -40,7 +41,7 @@ pathOption.AddValidator(result =>
 });
 
 var connectionStringOption = new Option<string?>(
-    new []{"--connection-string", "-c"},
+    new[] {"--connection-string", "-c"},
     description: "Connection string to connect to the Redis Database where URLs are stored. " +
                  "Alternatively, you can set the 'URL_SHORTENER_CONNECTION_STRING'."
 );
@@ -49,11 +50,13 @@ if (string.IsNullOrEmpty(envConnectionString))
 {
     connectionStringOption.IsRequired = true;
 }
+
 #endregion
 
 var rootCommand = new RootCommand("Manage the shortened URLs.");
 
 #region Create Command
+
 var createCommand = new Command("create", "Create a shortened URL")
 {
     destinationOption,
@@ -64,7 +67,7 @@ var createCommand = new Command("create", "Create a shortened URL")
 createCommand.SetHandler(async (destination, path, connectionString) =>
 {
     var redisConnection = await ConnectionMultiplexer.ConnectAsync(
-        connectionString ?? 
+        connectionString ??
         envConnectionString ??
         throw new Exception("Missing connection string")
     );
@@ -72,18 +75,27 @@ createCommand.SetHandler(async (destination, path, connectionString) =>
 
     if (await redisDb.KeyExistsAsync(path))
     {
-        Console.WriteLine($"Path {path} is already in use.");
+        Console.Error.WriteLine($"Path {path} is already in use.");
         return;
     }
 
     var urlWasSet = await redisDb.StringSetAsync(path, destination);
-    Console.WriteLine(urlWasSet ? "Created shortened URL." : "Failed to create shortened URL.");
+    if (urlWasSet)
+    {
+        Console.WriteLine("Created shortened URL.");
+    }
+    else
+    {
+        Console.Error.WriteLine("Failed to create shortened URL.");
+    }
 }, destinationOption, pathOption, connectionStringOption);
 
 rootCommand.AddCommand(createCommand);
+
 #endregion
 
-#region Delet Command
+#region Delete Command
+
 var deleteCommand = new Command("delete", "Delete a shortened URL")
 {
     pathOption,
@@ -93,7 +105,7 @@ var deleteCommand = new Command("delete", "Delete a shortened URL")
 deleteCommand.SetHandler(async (path, connectionString) =>
 {
     var redisConnection = await ConnectionMultiplexer.ConnectAsync(
-        connectionString ?? 
+        connectionString ??
         envConnectionString ??
         throw new Exception("Missing connection string")
     );
@@ -106,13 +118,22 @@ deleteCommand.SetHandler(async (path, connectionString) =>
     }
 
     var urlWasDeleted = await redisDb.KeyDeleteAsync(path);
-    Console.WriteLine(urlWasDeleted ? "Deleted shortened URL." : "Failed to delete shortened URL.");
+    if (urlWasDeleted)
+    {
+        Console.WriteLine("Deleted shortened URL.");
+    }
+    else
+    {
+        Console.Error.WriteLine("Failed to delete shortened URL.");
+    }
 }, pathOption, connectionStringOption);
 
 rootCommand.AddCommand(deleteCommand);
+
 #endregion
 
 #region Get Command
+
 var getCommand = new Command("get", "Get a shortened URL")
 {
     pathOption,
@@ -122,7 +143,7 @@ var getCommand = new Command("get", "Get a shortened URL")
 getCommand.SetHandler(async (path, connectionString) =>
 {
     var redisConnection = await ConnectionMultiplexer.ConnectAsync(
-        connectionString ?? 
+        connectionString ??
         envConnectionString ??
         throw new Exception("Missing connection string")
     );
@@ -130,17 +151,20 @@ getCommand.SetHandler(async (path, connectionString) =>
 
     if (await redisDb.KeyExistsAsync(path) == false)
     {
-        Console.WriteLine($"Path does not exist.");
+        Console.Error.WriteLine($"Path does not exist.");
         return;
     }
+
     var redisValue = await redisDb.StringGetAsync(path);
     Console.WriteLine($"Destination URL: {redisValue.ToString()}, Path: {path}");
 }, pathOption, connectionStringOption);
 
 rootCommand.AddCommand(getCommand);
+
 #endregion
 
 #region List Command
+
 var listCommand = new Command("list", "List shortened URLs")
 {
     connectionStringOption
@@ -149,7 +173,7 @@ var listCommand = new Command("list", "List shortened URLs")
 listCommand.SetHandler(async (connectionString) =>
 {
     var redisConnection = await ConnectionMultiplexer.ConnectAsync(
-        connectionString ?? 
+        connectionString ??
         envConnectionString ??
         throw new Exception("Missing connection string")
     );
@@ -160,7 +184,7 @@ listCommand.SetHandler(async (connectionString) =>
         await foreach (var redisKey in redisServer.KeysAsync())
         {
             var key = redisKey.ToString();
-            if(keys.Contains(key)) continue;
+            if (keys.Contains(key)) continue;
             keys.Add(key);
         }
     }
@@ -172,10 +196,10 @@ listCommand.SetHandler(async (connectionString) =>
         var redisValue = redisDb.StringGet(key);
         Console.WriteLine($"Destination URL: {redisValue.ToString()}, Path: {key}");
     }
-    
 }, connectionStringOption);
 
 rootCommand.AddCommand(listCommand);
+
 #endregion
 
 return rootCommand.InvokeAsync(args).Result;
