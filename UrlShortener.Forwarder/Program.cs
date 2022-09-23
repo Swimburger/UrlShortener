@@ -1,43 +1,29 @@
-using System.Text.RegularExpressions;
 using StackExchange.Redis;
+using UrlShortener.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
-{
-    var connectionString = builder.Configuration.GetConnectionString("UrlsDb")
-                ?? throw new Exception("Missing 'UrlsDb' connection string");
-    var redisDb = await ConnectionMultiplexer.ConnectAsync(connectionString);
-    builder.Services.AddSingleton<ConnectionMultiplexer>(redisDb);
-    builder.Services.AddTransient(provider =>
-        provider.GetRequiredService<ConnectionMultiplexer>().GetDatabase()
-    );
-}
+var connectionString = builder.Configuration.GetConnectionString("UrlsDb")
+            ?? throw new Exception("Missing 'UrlsDb' connection string");
+var redisConnection = await ConnectionMultiplexer.ConnectAsync(connectionString);
+builder.Services.AddSingleton(redisConnection);
+builder.Services.AddTransient<ShortUrlRepository>();
 
 var app = builder.Build();
 
-var pathRegex = new Regex(
-    "^[a-zA-Z0-9_]*$",
-    RegexOptions.None,
-    TimeSpan.FromMilliseconds(1)
-);
-
 app.MapGet("/{path}", async (
     string path,
-    IDatabase redisDb
+    ShortUrlRepository shortUrlRepository
 ) =>
 {
-    if (string.IsNullOrEmpty(path) ||
-        path.Length > 10 ||
-        pathRegex.IsMatch(path) == false)
+    if(ShortUrlValidator.ValidatePath(path, out _))
         return Results.BadRequest();
 
-    var redisValue = await redisDb.StringGetAsync(path);
-    if (redisValue.IsNullOrEmpty)
+    var shortUrl = await shortUrlRepository.GetByPath(path);
+    if (shortUrl == null || string.IsNullOrEmpty(shortUrl.Destination))
         return Results.NotFound();
 
-    var destination = redisValue.ToString();
-
-    return Results.Redirect(destination);
+    return Results.Redirect(shortUrl.Destination);
 });
 
 app.Run();

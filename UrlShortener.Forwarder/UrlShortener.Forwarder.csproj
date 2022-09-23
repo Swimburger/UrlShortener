@@ -10,4 +10,8 @@
     <PackageReference Include="StackExchange.Redis" Version="2.6.66" />
   </ItemGroup>
 
+  <ItemGroup>
+    <ProjectReference Include="..\UrlShortener.Data\UrlShortener.Data.csproj" />
+  </ItemGroup>
+
 </Project>
