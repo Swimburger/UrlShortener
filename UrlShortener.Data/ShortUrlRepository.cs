@@ -2,7 +2,7 @@
 
 using StackExchange.Redis;
 
-public class ShortUrlRepository
+public sealed class ShortUrlRepository
 {
     private readonly ConnectionMultiplexer redisConnection;
     private readonly IDatabase redisDatabase;
@@ -23,6 +23,16 @@ public class ShortUrlRepository
             throw new Exception($"Failed to create shortened URL.");
     }
 
+    public async Task Update(ShortUrl shortUrl)
+    {
+        if (await Exists(shortUrl.Path) == false)
+            throw new Exception($"Shortened URL with path '{shortUrl.Path}' does not exist.");
+
+        var urlWasSet = await redisDatabase.StringSetAsync(shortUrl.Path, shortUrl.Destination);
+        if (!urlWasSet)
+            throw new Exception($"Failed to update shortened URL.");
+    }
+
     public async Task Delete(string path)
     {
         if (await Exists(path) == false)
@@ -33,11 +43,8 @@ public class ShortUrlRepository
             throw new Exception("Failed to delete shortened URL.");
     }
 
-    public async Task<ShortUrl?> GetByPath(string path)
+    public async Task<ShortUrl?> Get(string path)
     {
-        if (await Exists(path) == false)
-            throw new Exception($"Shortened URL with path '{path}' does not exist.");
-
         var redisValue = await redisDatabase.StringGetAsync(path);
         if (redisValue.IsNullOrEmpty)
             return null;

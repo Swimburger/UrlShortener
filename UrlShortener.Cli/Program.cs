@@ -2,8 +2,6 @@
 using StackExchange.Redis;
 using UrlShortener.Data;
 
-#region Options
-
 var destinationOption = new Option<string>(
     new[] {"--destination-url", "-d"},
     description: "The URL that the shortened URL will forward to."
@@ -43,8 +41,6 @@ if (string.IsNullOrEmpty(envConnectionString))
     connectionStringOption.IsRequired = true;
 }
 
-#endregion
-
 var rootCommand = new RootCommand("Manage the shortened URLs.");
 
 async Task<ConnectionMultiplexer> GetRedisConnection(string? connectionString)
@@ -52,12 +48,10 @@ async Task<ConnectionMultiplexer> GetRedisConnection(string? connectionString)
     var redisConnection = await ConnectionMultiplexer.ConnectAsync(
         connectionString ??
         envConnectionString ??
-        throw new Exception("Missing connection string")
+        throw new Exception("Missing connection string.")
     );
     return redisConnection;
 }
-
-#region Create Command
 
 var createCommand = new Command("create", "Create a shortened URL")
 {
@@ -72,7 +66,7 @@ createCommand.SetHandler(async (destination, path, connectionString) =>
     try
     {
         await shortUrlRepository.Create(new ShortUrl(destination, path));
-        Console.WriteLine($"Shortened URL created.");
+        Console.WriteLine("Shortened URL created.");
     }
     catch (Exception e)
     {
@@ -82,9 +76,28 @@ createCommand.SetHandler(async (destination, path, connectionString) =>
 
 rootCommand.AddCommand(createCommand);
 
-#endregion
+var updateCommand = new Command("update", "Update a shortened URL")
+{
+    destinationOption,
+    pathOption,
+    connectionStringOption
+};
 
-#region Delete Command
+updateCommand.SetHandler(async (destination, path, connectionString) =>
+{
+    var shortUrlRepository = new ShortUrlRepository(await GetRedisConnection(connectionString));
+    try
+    {
+        await shortUrlRepository.Update(new ShortUrl(destination, path));
+        Console.WriteLine("Shortened URL updated.");
+    }
+    catch (Exception e)
+    {
+        Console.Error.WriteLine(e.Message);
+    }
+}, destinationOption, pathOption, connectionStringOption);
+
+rootCommand.AddCommand(updateCommand);
 
 var deleteCommand = new Command("delete", "Delete a shortened URL")
 {
@@ -98,7 +111,7 @@ deleteCommand.SetHandler(async (path, connectionString) =>
     try
     {
         await shortUrlRepository.Delete(path);
-        Console.WriteLine($"Shortened URL deleted.");
+        Console.WriteLine("Shortened URL deleted.");
     }
     catch (Exception e)
     {
@@ -107,10 +120,6 @@ deleteCommand.SetHandler(async (path, connectionString) =>
 }, pathOption, connectionStringOption);
 
 rootCommand.AddCommand(deleteCommand);
-
-#endregion
-
-#region Get Command
 
 var getCommand = new Command("get", "Get a shortened URL")
 {
@@ -123,7 +132,7 @@ getCommand.SetHandler(async (path, connectionString) =>
     var shortUrlRepository = new ShortUrlRepository(await GetRedisConnection(connectionString));
     try
     {
-        var shortUrl = await shortUrlRepository.GetByPath(path);
+        var shortUrl = await shortUrlRepository.Get(path);
         if (shortUrl == null)
             Console.Error.WriteLine($"Shortened URL for path '{path}' not found.");
         else
@@ -136,10 +145,6 @@ getCommand.SetHandler(async (path, connectionString) =>
 }, pathOption, connectionStringOption);
 
 rootCommand.AddCommand(getCommand);
-
-#endregion
-
-#region List Command
 
 var listCommand = new Command("list", "List shortened URLs")
 {
@@ -164,7 +169,5 @@ listCommand.SetHandler(async (connectionString) =>
 }, connectionStringOption);
 
 rootCommand.AddCommand(listCommand);
-
-#endregion
 
 return rootCommand.InvokeAsync(args).Result;

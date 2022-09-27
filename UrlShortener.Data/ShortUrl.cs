@@ -1,3 +1,3 @@
 namespace UrlShortener.Data;
 
-public record ShortUrl(string? Destination, string? Path);
+public sealed record ShortUrl(string? Destination, string? Path);

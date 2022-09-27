@@ -3,8 +3,8 @@ using UrlShortener.Data;
 
 var builder = WebApplication.CreateBuilder(args);
 
-var connectionString = builder.Configuration.GetConnectionString("UrlsDb")
-            ?? throw new Exception("Missing 'UrlsDb' connection string");
+var connectionString = builder.Configuration.GetConnectionString("ShortenedUrlsDb")
+            ?? throw new Exception("Missing 'ShortenedUrlsDb' connection string");
 var redisConnection = await ConnectionMultiplexer.ConnectAsync(connectionString);
 builder.Services.AddSingleton(redisConnection);
 builder.Services.AddTransient<ShortUrlRepository>();
@@ -19,7 +19,7 @@ app.MapGet("/{path}", async (
     if(ShortUrlValidator.ValidatePath(path, out _))
         return Results.BadRequest();
 
-    var shortUrl = await shortUrlRepository.GetByPath(path);
+    var shortUrl = await shortUrlRepository.Get(path);
     if (shortUrl == null || string.IsNullOrEmpty(shortUrl.Destination))
         return Results.NotFound();
 

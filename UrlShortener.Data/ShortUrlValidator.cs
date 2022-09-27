@@ -5,7 +5,7 @@ namespace UrlShortener.Data;
 public static class ShortUrlValidator
 {
     private static readonly Regex PathRegex = new Regex(
-        "^[a-zA-Z0-9_]*$",
+        "^[a-zA-Z0-9_-]*$",
         RegexOptions.None,
         TimeSpan.FromMilliseconds(1)
     );
@@ -71,7 +71,7 @@ public static class ShortUrlValidator
             validationResultsList.Add("Path cannot be longer than 10 characters.");
 
         if (!PathRegex.IsMatch(path))
-            validationResultsList.Add("Path can only contain alphanumeric characters and underscores.");
+            validationResultsList.Add("Path can only contain alphanumeric characters, underscores, and dashes.");
         
         validationResults = validationResultsList.ToArray();
         return validationResultsList.Count > 0;
